@@ -8,7 +8,9 @@ import random
 import csv
 import os
 import uvicorn
+import uuid
 from typing import List
+from datetime import datetime
 
 app = FastAPI()
 
@@ -89,8 +91,9 @@ async def generate_and_download(request: PhoneNumberRequest, background_tasks: B
     
     valid_numbers = generate_phone_numbers(request.country_code, request.prefix, request.amount)
     
-    # Ensure the file is saved in the correct directory
-    file_path = os.path.join(GENERATED_FILES_PATH, "generated_phone_numbers.csv")
+    # Generate a unique file name using timestamp and random UUID
+    file_name = f"generated_phone_numbers_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex}.csv"
+    file_path = os.path.join(GENERATED_FILES_PATH, file_name)
     
     background_tasks.add_task(save_to_csv, file_path, valid_numbers)
     
@@ -102,7 +105,7 @@ async def generate_and_download(request: PhoneNumberRequest, background_tasks: B
 async def download_csv(file_path: str):
     # Check if the file exists before attempting to serve it
     if os.path.exists(file_path):
-        return FileResponse(file_path, media_type='text/csv', filename='phone_numbers.csv')
+        return FileResponse(file_path, media_type='text/csv', filename=os.path.basename(file_path))
     else:
         raise HTTPException(status_code=404, detail="File not found")
 
@@ -113,3 +116,4 @@ async def home(request: Request):
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000)
+
