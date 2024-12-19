@@ -3,50 +3,117 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Phone Number Generator</title>
+    <title>Terminal Hacking Interface</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body {
+            background-color: black;
+            color: #00ff00;
+            font-family: 'Courier New', Courier, monospace;
+        }
+        .terminal {
+            white-space: pre;
+            color: #ff0000;
+        }
+        .login-section {
+            display: none;
+        }
+        .prompt {
+            display: inline-block;
+            margin-right: 10px;
+        }
+        input {
+            background-color: black;
+            color: #00ff00;
+            border: none;
+            outline: none;
+        }
+        .loading-text {
+            display: none;
+            color: #00ff00;
+        }
+    </style>
 </head>
 <body>
     <div class="container mt-5">
-        <h1 class="text-center" style="font-family: 'Franklin Gothic Medium', 'Arial Narrow', Arial, sans-serif;">Phone Number Generator</h1>
-        <form id="phoneForm" class="mt-4">
-            <div class="mb-3">
-                <label for="countryCode" class="form-label">Country Code (e.g., +1)</label>
-                <input type="text" id="countryCode" class="form-control" placeholder="+1" required>
-            </div>
-            <div class="mb-3">
-                <label for="prefix" class="form-label">Prefix (e.g., 555)</label>
-                <input type="text" id="prefix" class="form-control" placeholder="555" required>
-            </div>
-            <div class="mb-3">
-                <label for="amount" class="form-label">Amount of Numbers</label>
-                <input type="number" id="amount" class="form-control" placeholder="10" required>
-            </div>
-            <button type="submit" class="btn btn-primary">Generate Phone Numbers</button>
-        </form>
-
-        <div id="loadingSpinner" class="mt-4 text-center" style="display: none;">
-            <div class="spinner-border" role="status">
-                <span class="visually-hidden">Loading...</span>
-            </div>
+        <div class="terminal" id="terminal">
+            # by The Mr404 <br>
+            #  _____ ______   ________          ___   ___  ________  ___   ___     <br>
+            # |\   _ \  _   \|\   __  \        |\  \ |\  \|\   __  \|\  \ |\  \    <br>
+            # \ \  \\\__\ \  \ \  \|\  \       \ \  \\_\  \ \  \|\  \ \  \\_\  \   <br>
+            #  \ \  \\|__| \  \ \   _  _\       \ \______  \ \  \\\  \ \______  \  <br>
+            #   \ \  \    \ \  \ \  \\  \|       \|_____|\  \ \  \\\  \|_____|\  \ <br>
+            #    \ \__\    \ \__\ \__\\ _\              \ \__\ \_______\     \ \__\<br>
+            #    \|__|     \|__|\|__|\|__|              \|__|\|_______|      \|__|<br>
         </div>
 
-        <div id="result" class="mt-4"></div>
+        <!-- Terminal Interaction Section -->
+        <div id="terminal-input" class="terminal">MR404 :: <input type="text" id="inputField" /></div>
+        <div id="loading-text" class="loading-text mt-4">[INFO] Generating phone numbers... please wait</div>
+        <div id="result-section" class="mt-4" style="display:none;"></div>
     </div>
 
     <script>
-        document.getElementById("phoneForm").addEventListener("submit", async function(event) {
-            event.preventDefault();
-            const countryCode = document.getElementById("countryCode").value;
-            const prefix = document.getElementById("prefix").value;
-            const amount = document.getElementById("amount").value;
-            
-            // Show loading spinner
-            document.getElementById("loadingSpinner").style.display = "block";
-            document.getElementById("result").innerHTML = ""; // Clear previous results
+        const terminalInput = document.getElementById('terminal-input');
+        const loadingText = document.getElementById('loading-text');
+        const inputs = [];
+        let step = 0;
+
+        const prompts = [
+            "=>> Login?",
+            "=>> Password?",
+            "=>> Enter Country Code?",
+            "=>> Enter Prefix?",
+            "=>> Enter Amount of Numbers?"
+        ];
+
+        // Function to add a new prompt and wait for user input
+        function promptUser() {
+            const prompt = prompts[step];
+            terminalInput.innerHTML += `<br>${prompt}`;
+            const inputField = document.getElementById('inputField');
+            inputField.focus();
+
+            // Handle user input
+            inputField.addEventListener('keydown', function (e) {
+                if (e.key === 'Enter') {
+                    inputs.push(inputField.value);
+                    processInput();
+                }
+            });
+        }
+
+        // Function to process the input at each step
+        function processInput() {
+            if (step === 0 && inputs[0] !== 'admin') {
+                terminalInput.innerHTML += "<br>[ERROR] Invalid login. Try again.";
+                inputs.pop();  // Clear invalid login input
+            } else if (step === 1 && inputs[1] !== 'admin') {
+                terminalInput.innerHTML += "<br>[ERROR] Invalid password. Try again.";
+                inputs.pop();  // Clear invalid password input
+            } else {
+                step++;
+            }
+
+            if (step < prompts.length) {
+                promptUser();
+            } else {
+                submitData();
+            }
+        }
+
+        // Function to simulate loading and submit data
+        async function submitData() {
+            terminalInput.innerHTML += "<br>[INFO] Credentials accepted.";
+            terminalInput.innerHTML += "<br>[INFO] Generating phone numbers...";
+            loadingText.style.display = 'block';
+
+            const countryCode = inputs[2];
+            const prefix = inputs[3];
+            const amount = inputs[4];
 
             try {
-                const response = await fetch("generate-and-send", {
+                const response = await fetch("/generate-and-send", {
                     method: "POST",
                     headers: {
                         "Content-Type": "application/json"
@@ -60,29 +127,22 @@
 
                 const result = await response.json();
                 if (response.ok) {
-                    document.getElementById("result").innerHTML = `
-                        <div class="alert alert-success">
-                            CSV generation in progress. Download link: <a href="${result.download_link}" target="_blank">Download</a>
-                        </div>
-                    `;
+                    // Display success message and download link
+                    terminalInput.innerHTML += `<br>[SUCCESS] Phone numbers generated successfully!`;
+                    terminalInput.innerHTML += `<br>[INFO] Click <a href="${result.download_link}" target="_blank">here</a> to download the CSV file.`;
+                    loadingText.style.display = 'none';
                 } else {
-                    document.getElementById("result").innerHTML = `
-                        <div class="alert alert-danger">
-                            Error: ${result.detail}
-                        </div>
-                    `;
+                    terminalInput.innerHTML += `<br>[ERROR] ${result.detail}`;
+                    loadingText.style.display = 'none';
                 }
             } catch (error) {
-                document.getElementById("result").innerHTML = `
-                    <div class="alert alert-danger">
-                        An unexpected error occurred: ${error.message}
-                    </div>
-                `;
-            } finally {
-                // Hide loading spinner after processing
-                document.getElementById("loadingSpinner").style.display = "none";
+                terminalInput.innerHTML += `<br>[ERROR] An error occurred: ${error.message}`;
+                loadingText.style.display = 'none';
             }
-        });
+        }
+
+        // Start the terminal interaction
+        promptUser();
     </script>
 </body>
 </html>

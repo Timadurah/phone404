@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, BackgroundTasks, Request
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.templating import Jinja2Templates
@@ -6,8 +6,9 @@ from pydantic import BaseModel
 import random
 import requests
 import os
-import uvicorn
-from typing import List
+import phonenumbers
+from phonenumbers import carrier, number_type, PhoneNumberType
+from phonenumbers.phonenumberutil import NumberParseException
 
 app = FastAPI()
 
@@ -29,26 +30,56 @@ def generate_phone_number(country_code: str, prefix: str):
     phone_number = f"{country_code}{prefix}{random_number}"
     return phone_number
 
-# Function to check if the phone number is valid (implement validation logic as needed)
-def is_valid_phone_number(phone_number: str, country_code: str):
-    # Add validation logic if needed
-    return True
+# Function to check if the phone number is valid, and get carrier and line type info
+def get_phone_number_info(phone_number: str, country_code: str):
+    try:
+        # Parse the phone number with the country code
+        parsed_number = phonenumbers.parse(phone_number, country_code)
 
-# Generate phone numbers and validate them
+        # Check if the phone number is valid
+        if phonenumbers.is_valid_number(parsed_number):
+            phone_carrier = carrier.name_for_number(parsed_number, 'en')  # Get carrier info
+            phone_number_type = phonenumbers.number_type(parsed_number)
+
+            # Determine if the number is mobile or landline
+            if phone_number_type == PhoneNumberType.MOBILE:
+                line_type = 'mobile'
+            elif phone_number_type == PhoneNumberType.FIXED_LINE:
+                line_type = 'landline'
+            else:
+                line_type = 'unknown'
+
+            return {
+                "phone_number": phone_number,
+                "carrier": phone_carrier if phone_carrier else "Unknown",
+                "line_type": line_type,
+                "valid": True
+            }
+        else:
+            return {"phone_number": phone_number, "valid": False}
+    except NumberParseException as e:
+        print(f"Error parsing number: {e}")
+        return {"phone_number": phone_number, "valid": False}
+# Function to generate and validate phone numbers, checking carrier and line type
 def generate_phone_numbers(country_code: str, prefix: str, amount: int):
     valid_numbers = []
     for _ in range(amount):
         phone_number = generate_phone_number(country_code, prefix)
-        if is_valid_phone_number(phone_number, country_code):
-            valid_numbers.append({"phone_number": phone_number})
+        number_info = get_phone_number_info(phone_number, country_code)
+        if number_info['valid'] and number_info['line_type'] == 'mobile':  # Only add valid mobile numbers
+            valid_numbers.append({
+                "phone_number": number_info['phone_number'],
+                "carrier": number_info['carrier'],
+                "line_type": number_info['line_type']
+            })
     return valid_numbers
-
-# Endpoint to generate phone numbers and send to PHP API
+# Request model for the phone number generation API
 class PhoneNumberRequest(BaseModel):
     country_code: str
     prefix: str
     amount: int
 
+# In your /generate-and-send endpoint, you send more detailed data to the PHP API
 @app.post("/generate-and-send")
 async def generate_and_send(request: PhoneNumberRequest):
     if not request.country_code.startswith("+"):
@@ -60,10 +91,13 @@ async def generate_and_send(request: PhoneNumberRequest):
     
     valid_numbers = generate_phone_numbers(request.country_code, request.prefix, request.amount)
     
-    # Send the phone numbers to the PHP API
+    if len(valid_numbers) == 0:
+        raise HTTPException(status_code=400, detail="No valid mobile numbers generated")
+
+    # Send the phone numbers to the PHP API (replace with your API URL)
     php_api_url = "https://topkonnect.net/phone404.php"
     headers = {'Content-Type': 'application/json'}  # Set headers
-    
+
     try:
         # Disable SSL verification and set a timeout of 30 seconds
         response = requests.post(php_api_url, json={"numbers": valid_numbers}, headers=headers, verify=False, timeout=30)
@@ -95,4 +129,5 @@ async def home(request: Request):
     return templates.TemplateResponse("index.html", {"request": request})
 
 if __name__ == "__main__":
+    import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
