@@ -68,9 +68,9 @@ def generate_phone_numbers(country_code: str, prefix: str, amount: int):
 def save_to_csv(file_path: str, numbers: List[dict]):
     with open(file_path, mode="w", newline="") as file:
         writer = csv.writer(file)
-        writer.writerow(["Phone Number", "Carrier"])
+        writer.writerow(["Phone Number"])
         for item in numbers:
-            writer.writerow([item["phone_number"], item["carrier"]])
+            writer.writerow([item["phone_number"]])
 
 # Endpoint to generate phone numbers and provide a download link for the CSV
 class PhoneNumberRequest(BaseModel):
