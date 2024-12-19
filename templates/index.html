@@ -46,7 +46,7 @@
             document.getElementById("result").innerHTML = ""; // Clear previous results
 
             try {
-                const response = await fetch("/generate-and-download", {
+                const response = await fetch("generate-and-send", {
                     method: "POST",
                     headers: {
                         "Content-Type": "application/json"

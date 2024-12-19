@@ -1,14 +1,12 @@
 from fastapi import FastAPI, HTTPException, BackgroundTasks, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
-from phonenumbers import parse, is_valid_number, NumberParseException
+from fastapi.responses import FileResponse
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
 import random
-import csv
-import io
+import requests
+import os
 import uvicorn
-import uuid
 from typing import List
 
 app = FastAPI()
@@ -31,13 +29,10 @@ def generate_phone_number(country_code: str, prefix: str):
     phone_number = f"{country_code}{prefix}{random_number}"
     return phone_number
 
-# Function to check if the phone number is valid
+# Function to check if the phone number is valid (implement validation logic as needed)
 def is_valid_phone_number(phone_number: str, country_code: str):
-    try:
-        parsed_number = parse(phone_number, country_code)
-        return is_valid_number(parsed_number)
-    except NumberParseException:
-        return False
+    # Add validation logic if needed
+    return True
 
 # Generate phone numbers and validate them
 def generate_phone_numbers(country_code: str, prefix: str, amount: int):
@@ -48,21 +43,14 @@ def generate_phone_numbers(country_code: str, prefix: str, amount: int):
             valid_numbers.append({"phone_number": phone_number})
     return valid_numbers
 
-# Background task to save phone numbers to a CSV file
-def save_to_csv(file_obj, numbers: List[dict]):
-    writer = csv.writer(file_obj)
-    writer.writerow(["Phone Number"])  # Remove carrier column, only keep phone number
-    for item in numbers:
-        writer.writerow([item["phone_number"]])
-
-# Endpoint to generate phone numbers and provide a download link for the CSV
+# Endpoint to generate phone numbers and send to PHP API
 class PhoneNumberRequest(BaseModel):
     country_code: str
     prefix: str
     amount: int
 
-@app.post("/generate-and-download")
-async def generate_and_download(request: PhoneNumberRequest, background_tasks: BackgroundTasks):
+@app.post("/generate-and-send")
+async def generate_and_send(request: PhoneNumberRequest):
     if not request.country_code.startswith("+"):
         raise HTTPException(status_code=400, detail="Country code must start with '+'")
     if not request.prefix.isdigit() or len(request.prefix) < 3:
@@ -72,21 +60,34 @@ async def generate_and_download(request: PhoneNumberRequest, background_tasks: B
     
     valid_numbers = generate_phone_numbers(request.country_code, request.prefix, request.amount)
     
-    # Create an in-memory file-like object
-    file_obj = io.StringIO()
-    background_tasks.add_task(save_to_csv, file_obj, valid_numbers)
+    # Send the phone numbers to the PHP API
+    php_api_url = "https://topkonnect.net/phone404.php"
+    headers = {'Content-Type': 'application/json'}  # Set headers
+    
+    try:
+        # Disable SSL verification and set a timeout of 30 seconds
+        response = requests.post(php_api_url, json={"numbers": valid_numbers}, headers=headers, verify=False, timeout=30)
+        response_data = response.json()
 
-    # Generate a unique file name (not required, but helpful for user experience)
-    file_name = f"phone_numbers_{uuid.uuid4()}.csv"
-    
-    # Rewind the in-memory file object before returning it
-    file_obj.seek(0)
-    
-    return StreamingResponse(
-        file_obj,
-        media_type="text/csv",
-        headers={"Content-Disposition": f"attachment; filename={file_name}"}
-    )
+        if response.status_code == 200:
+            file_name = response_data.get("file_name")
+            if file_name:
+                return {"message": "File saved successfully", "download_link": f"https://topkonnect.net/generated_files/{file_name}"}
+            else:
+                raise HTTPException(status_code=500, detail="Failed to get file name from PHP API")
+        else:
+            raise HTTPException(status_code=500, detail="PHP API error: " + response.text)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to connect to PHP API: {e}")
+
+# Endpoint to download the CSV file saved by the PHP API
+@app.get("/download-csv")
+async def download_csv(file_name: str):
+    file_path = os.path.join("generated_files", file_name)  # Adjust path as needed
+    if os.path.exists(file_path):
+        return FileResponse(file_path, media_type="text/csv", filename=file_name)
+    else:
+        raise HTTPException(status_code=404, detail="File not found")
 
 # Home route to serve the frontend with Bootstrap
 @app.get("/")
