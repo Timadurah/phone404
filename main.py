@@ -1,16 +1,15 @@
 from fastapi import FastAPI, HTTPException, BackgroundTasks, Request
 from fastapi.middleware.cors import CORSMiddleware
-from phonenumbers import carrier, parse, is_valid_number, NumberParseException
-from fastapi.responses import FileResponse
+from fastapi.responses import StreamingResponse
+from phonenumbers import parse, is_valid_number, NumberParseException
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
 import random
 import csv
-import os
+import io
 import uvicorn
 import uuid
 from typing import List
-from datetime import datetime
 
 app = FastAPI()
 
@@ -26,11 +25,6 @@ app.add_middleware(
 # Setup Jinja2 templates
 templates = Jinja2Templates(directory="templates")
 
-# Ensure there's a folder for generated files (change path as needed)
-GENERATED_FILES_PATH = "generated_files"
-if not os.path.exists(GENERATED_FILES_PATH):
-    os.makedirs(GENERATED_FILES_PATH)
-
 # Function to generate a random phone number with a given country code
 def generate_phone_number(country_code: str, prefix: str):
     random_number = random.randint(1000000, 9999999)  # Generate a 7-digit number
@@ -45,34 +39,21 @@ def is_valid_phone_number(phone_number: str, country_code: str):
     except NumberParseException:
         return False
 
-# Function to get the carrier of a phone number
-def get_carrier(phone_number: str, country_code: str):
-    try:
-        parsed_number = parse(phone_number, country_code)
-        carrier_name = carrier.name_for_number(parsed_number, "en")
-        return carrier_name if carrier_name != "Unknown" else None
-    except Exception as e:
-        print(f"Error in carrier lookup: {e}")
-        return None
-
 # Generate phone numbers and validate them
 def generate_phone_numbers(country_code: str, prefix: str, amount: int):
     valid_numbers = []
     for _ in range(amount):
         phone_number = generate_phone_number(country_code, prefix)
         if is_valid_phone_number(phone_number, country_code):
-            carrier_name = get_carrier(phone_number, country_code)
-            if carrier_name:
-                valid_numbers.append({"phone_number": phone_number, "carrier": carrier_name})
+            valid_numbers.append({"phone_number": phone_number})
     return valid_numbers
 
 # Background task to save phone numbers to a CSV file
-def save_to_csv(file_path: str, numbers: List[dict]):
-    with open(file_path, mode="w", newline="") as file:
-        writer = csv.writer(file)
-        writer.writerow(["Phone Number"])
-        for item in numbers:
-            writer.writerow([item["phone_number"]])
+def save_to_csv(file_obj, numbers: List[dict]):
+    writer = csv.writer(file_obj)
+    writer.writerow(["Phone Number"])  # Remove carrier column, only keep phone number
+    for item in numbers:
+        writer.writerow([item["phone_number"]])
 
 # Endpoint to generate phone numbers and provide a download link for the CSV
 class PhoneNumberRequest(BaseModel):
@@ -91,23 +72,21 @@ async def generate_and_download(request: PhoneNumberRequest, background_tasks: B
     
     valid_numbers = generate_phone_numbers(request.country_code, request.prefix, request.amount)
     
-    # Generate a unique file name using timestamp and random UUID
-    file_name = f"generated_phone_numbers_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex}.csv"
-    file_path = os.path.join(GENERATED_FILES_PATH, file_name)
-    
-    background_tasks.add_task(save_to_csv, file_path, valid_numbers)
-    
-    download_link = f"/download-csv?file_path={file_path}"
-    return {"detail": "CSV generation in progress", "download_link": download_link}
+    # Create an in-memory file-like object
+    file_obj = io.StringIO()
+    background_tasks.add_task(save_to_csv, file_obj, valid_numbers)
 
-# Endpoint to download the CSV file
-@app.get("/download-csv")
-async def download_csv(file_path: str):
-    # Check if the file exists before attempting to serve it
-    if os.path.exists(file_path):
-        return FileResponse(file_path, media_type='text/csv', filename=os.path.basename(file_path))
-    else:
-        raise HTTPException(status_code=404, detail="File not found")
+    # Generate a unique file name (not required, but helpful for user experience)
+    file_name = f"phone_numbers_{uuid.uuid4()}.csv"
+    
+    # Rewind the in-memory file object before returning it
+    file_obj.seek(0)
+    
+    return StreamingResponse(
+        file_obj,
+        media_type="text/csv",
+        headers={"Content-Disposition": f"attachment; filename={file_name}"}
+    )
 
 # Home route to serve the frontend with Bootstrap
 @app.get("/")
@@ -116,4 +95,3 @@ async def home(request: Request):
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000)
-
