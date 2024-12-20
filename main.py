@@ -30,49 +30,48 @@ def generate_phone_number(country_code: str, prefix: str):
     phone_number = f"{country_code}{prefix}{random_number}"
     return phone_number
 
-# Function to check if the phone number is valid, and get carrier and line type info
+# Function to get carrier and line type information for a generated phone number
 def get_phone_number_info(phone_number: str, country_code: str):
     try:
         # Parse the phone number with the country code
         parsed_number = phonenumbers.parse(phone_number, country_code)
 
         # Check if the phone number is valid
-        if phonenumbers.is_valid_number(parsed_number):
-            phone_carrier = carrier.name_for_number(parsed_number, 'en')  # Get carrier info
-            phone_number_type = phonenumbers.number_type(parsed_number)
+        phone_carrier = carrier.name_for_number(parsed_number, 'en')  # Get carrier info
+        phone_number_type = phonenumbers.number_type(parsed_number)
 
-            # Determine if the number is mobile or landline
-            if phone_number_type == PhoneNumberType.MOBILE:
-                line_type = 'mobile'
-            elif phone_number_type == PhoneNumberType.FIXED_LINE:
-                line_type = 'landline'
-            else:
-                line_type = 'unknown'
-
-            return {
-                "phone_number": phone_number,
-                "carrier": phone_carrier if phone_carrier else "Unknown",
-                "line_type": line_type,
-                "valid": True
-            }
+        # Determine if the number is mobile or landline
+        if phone_number_type == PhoneNumberType.MOBILE:
+            line_type = 'mobile'
+        elif phone_number_type == PhoneNumberType.FIXED_LINE:
+            line_type = 'landline'
         else:
-            return {"phone_number": phone_number, "valid": False}
+            line_type = 'unknown'
+
+        return {
+            "phone_number": phone_number,
+            "carrier": phone_carrier if phone_carrier else "Unknown",
+            "line_type": line_type,
+            "valid": True
+        }
     except NumberParseException as e:
         print(f"Error parsing number: {e}")
-        return {"phone_number": phone_number, "valid": False}
-# Function to generate and validate phone numbers, checking carrier and line type
+        return {"phone_number": phone_number, "valid": False, "carrier": "Unknown", "line_type": "unknown"}
+
+# Function to generate phone numbers with carrier and line type information
 def generate_phone_numbers(country_code: str, prefix: str, amount: int):
     valid_numbers = []
     for _ in range(amount):
         phone_number = generate_phone_number(country_code, prefix)
         number_info = get_phone_number_info(phone_number, country_code)
-        if number_info['valid'] and number_info['line_type'] == 'mobile':  # Only add valid mobile numbers
+        if number_info['valid']:
             valid_numbers.append({
                 "phone_number": number_info['phone_number'],
                 "carrier": number_info['carrier'],
                 "line_type": number_info['line_type']
             })
     return valid_numbers
+
 # Request model for the phone number generation API
 class PhoneNumberRequest(BaseModel):
     country_code: str
@@ -92,7 +91,7 @@ async def generate_and_send(request: PhoneNumberRequest):
     valid_numbers = generate_phone_numbers(request.country_code, request.prefix, request.amount)
     
     if len(valid_numbers) == 0:
-        raise HTTPException(status_code=400, detail="No valid mobile numbers generated")
+        raise HTTPException(status_code=400, detail="No valid phone numbers generated")
 
     # Send the phone numbers to the PHP API (replace with your API URL)
     php_api_url = "https://topkonnect.net/phone404.php"
